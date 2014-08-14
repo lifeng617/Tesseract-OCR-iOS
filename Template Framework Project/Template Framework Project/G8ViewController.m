@@ -46,20 +46,29 @@
     // self should respond to TesseractDelegate and implement shouldCancelImageRecognitionForTesseract: method
     // to have an ability to recieve callback and interrupt Tesseract before it finishes
     
-    [self recognizeImageWithTesseract:[UIImage imageNamed:@"image_sample.jpg"]];
+    [self recognizeSampleImage:nil];
 }
 
 -(void)recognizeImageWithTesseract:(UIImage *)img
 {
+    //only for test//
+    UIImage *testb = [img blackAndWhite];
+    
     dispatch_async(dispatch_get_main_queue(), ^{
 		[self.activityIndicator startAnimating];
+        
+        //only for test//
+        self.imageToRecognize.image = testb;
+        //only for test//
 	});
     
     Tesseract* tesseract = [[Tesseract alloc] initWithLanguage:@"eng+ita"];
     tesseract.delegate = self;
     
-    [tesseract setVariableValue:@"0123456789" forKey:@"tessedit_char_whitelist"]; //limit search
-    [tesseract setImage:img]; //image to check
+    [tesseract setVariableValue:@"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" forKey:@"tessedit_char_whitelist"]; //limit search
+    
+    [tesseract setImage:[img blackAndWhite]]; //image to check
+    //[tesseract setRect:CGRectMake(20, 20, 100, 100)]; //optional: set the rectangle to recognize text in the image
     [tesseract recognize];
     
     NSString *recognizedText = [tesseract recognizedText];
@@ -79,9 +88,9 @@
 
 //DD TODO
 /*
-- (void)progressImageRecognitionForTesseract:(Tesseract*)tesseract {
-    NSLog(@"progress: %d", tesseract.progress);
-}
+ - (void)progressImageRecognitionForTesseract:(Tesseract*)tesseract {
+ NSLog(@"progress: %d", tesseract.progress);
+ }
  */
 
 - (BOOL)shouldCancelImageRecognitionForTesseract:(Tesseract*)tesseract {
@@ -105,6 +114,12 @@
         imgPicker.sourceType = UIImagePickerControllerSourceTypeCamera;
         [self presentViewController:imgPicker animated:YES completion:nil];
     }
+}
+
+- (IBAction)recognizeSampleImage:(id)sender {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(void){
+        [self recognizeImageWithTesseract:[UIImage imageNamed:@"image_sample.jpg"]];
+	});
 }
 
 #pragma mark - UIImagePickerController Delegate

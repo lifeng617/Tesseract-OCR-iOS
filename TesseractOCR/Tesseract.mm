@@ -23,7 +23,7 @@ namespace tesseract {
     NSString* _language;
     NSMutableDictionary* _variables;
 	tesseract::TessBaseAPI* _tesseract;
-	uint32_t* _pixels;
+	const UInt8 *_pixels;
     ETEXT_DESC *_monitor;
 }
 
@@ -62,10 +62,6 @@ namespace tesseract {
         free(_monitor);
         _monitor = nullptr;
     }
-    if (_pixels != nullptr) {
-        free(_pixels);
-        _monitor = nullptr;
-    }
     if (_tesseract != nullptr) {
         // There is no needs to call Clear() and End() explicitly.
         // End() is sufficient to free up all memory of TessBaseAPI.
@@ -80,7 +76,7 @@ namespace tesseract {
 }
 
 - (id)initPrivateWithDataPath:(NSString *)dataPath language:(NSString *)language {
-
+    
 	self = [super init];
 	if (self) {
 		_dataPath = dataPath;
@@ -89,14 +85,14 @@ namespace tesseract {
         _monitor = new ETEXT_DESC();
         _monitor->cancel = (CANCEL_FUNC)[self methodForSelector:@selector(tesseractCancelCallbackFunction:)];
         _monitor->cancel_this = (__bridge void*)self;
-
+        
 		_variables = [[NSMutableDictionary alloc] init];
 		
         if (dataPath)
             [self copyDataToDocumentsDirectory];
         else
             [self setUpTesseractToSearchTrainedDataInTrainedDataFolderOfTheApplicatinBundle];
-
+        
 		_tesseract = new tesseract::TessBaseAPI();
 		
 		BOOL success = [self initEngine];
@@ -136,7 +132,7 @@ namespace tesseract {
 	{
 		[fileManager createDirectoryAtPath:dataPath withIntermediateDirectories:YES attributes:nil error:NULL];
 	}
-
+    
 	NSBundle *bundle = [NSBundle bundleForClass:[self class]];
     for (NSString *l in [_language componentsSeparatedByString:@"+"]) {
         NSString *tessdataPath = [bundle pathForResource:l ofType:@"traineddata"];
@@ -197,39 +193,35 @@ namespace tesseract {
 
 - (void)setImage:(UIImage *)image {
     
-    if (_pixels != nullptr) {
-        free(_pixels);
-        _pixels = nullptr;
-    }
-	
-	self.imageSize = [image size];
-	int width = self.imageSize.width;
-	int height = self.imageSize.height;
-	
-	if (width <= 0 || height <= 0) {
+    if (image == nil || image.size.width <= 0 || image.size.height <= 0) {
         NSLog(@"WARNING: Image has not size!");
 		return;
 	}
-	
-	_pixels = (uint32_t *) malloc(width * height * sizeof(uint32_t));
-	
-	// Clear the pixels so any transparency is preserved
-	memset(_pixels, 0, width * height * sizeof(uint32_t));
-	
-	CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-	
-	// Create a context with RGBA _pixels
-	CGContextRef context = CGBitmapContextCreate(_pixels, width, height, 8, width * sizeof(uint32_t), colorSpace,
-								   kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedLast);
-	
-	// Paint the bitmap to our context which will fill in the _pixels array
-	CGContextDrawImage(context, CGRectMake(0, 0, width, height), [image CGImage]);
-	
-	// We're done with the context and color space
-	CGContextRelease(context);
-	CGColorSpaceRelease(colorSpace);
-	
-	_tesseract->SetImage((const unsigned char *) _pixels, width, height, sizeof(uint32_t), width * sizeof(uint32_t));
+    
+    self.imageSize = image.size; //self.imageSize used in the characterBoxes method
+	int width = self.imageSize.width;
+	int height = self.imageSize.height;
+    
+    CGImage *cgImage = image.CGImage;
+    CFDataRef data = CGDataProviderCopyData(CGImageGetDataProvider(cgImage));
+    _pixels = CFDataGetBytePtr(data);
+    
+    size_t bitsPerComponent = CGImageGetBitsPerComponent(cgImage);
+    size_t bitsPerPixel = CGImageGetBitsPerPixel(cgImage);
+    size_t bytesPerRow = CGImageGetBytesPerRow(cgImage);
+    
+    tesseract::ImageThresholder *imageThresholder = new tesseract::ImageThresholder();
+    
+    assert(bytesPerRow < MAX_INT32);
+    {
+        imageThresholder->SetImage(_pixels,width,height,(int)(bitsPerPixel/bitsPerComponent),(int)bytesPerRow);
+        _tesseract->SetImage(imageThresholder->GetPixRect());
+    }
+    
+    imageThresholder->Clear();
+    CFRelease(data);
+    delete imageThresholder;
+    imageThresholder = nil;
 }
 
 - (void)setRect:(CGRect)rect {
@@ -250,7 +242,7 @@ namespace tesseract {
 
 - (NSDictionary *)characterBoxes {
     NSMutableDictionary *recognizedTextBoxes = [NSMutableDictionary dictionary];
-
+    
     //  Get box info
     char* boxText = _tesseract->GetBoxText(0);
     NSString *stringBoxes = [NSString stringWithUTF8String:boxText];
@@ -300,7 +292,7 @@ namespace tesseract {
     if([self.delegate respondsToSelector:selector])
         [self.delegate progressImageRecognitionForTesseract:self];
 }
-                              
+
 - (BOOL)tesseractCancelCallbackFunction:(int)words {
     
     if (_monitor->ocr_alive == 1)

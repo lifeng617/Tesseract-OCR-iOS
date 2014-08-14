@@ -8,6 +8,7 @@
 //
 
 #import <UIKit/UIKit.h>
+#import "UIImage+Filters.h"
 
 @class Tesseract;
 
